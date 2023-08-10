@@ -40,13 +40,13 @@ def process_stdin(raw_line: bytes):
     # get Meta
     meta = Meta(*raw_metadata.split(b" "))
     if meta.payload_type != PayLoadType.request.value:
-        log(f"=========filter by payload_type: {meta.payload_type}")
+        # log(f"=========filter by payload_type: {meta.payload_type}")
         return
 
     headers = get_headers(raw_headers)
-    log(f"headers: {headers._asdict()}")
+    # log(f"headers: {headers._asdict()}")
     if headers.path != b"/service/check":
-        log(f"=======filter by path: {headers.path}")
+        # log(f"=======filter by path: {headers.path}")
         return
 
     log("===================================")
@@ -77,8 +77,6 @@ def process_stdin(raw_line: bytes):
     if not new_body_decoded:
         log("=========filter by req body params=========")
         return
-
-    new_body_decoded = raw_content
 
     encoded = binascii.hexlify(
         raw_metadata + b"\n" + raw_headers + new_body_decoded
