@@ -1,65 +1,21 @@
-#! /Users/lannister/anaconda3/bin/python3
+#! /usr/bin/python3
 # -*- coding: utf-8 -*-
+
+###! /Users/lannister/anaconda3/bin/python3
 
 import sys
 import fileinput
 import binascii
 import json
 
-# Used to find end of the Headers section
-EMPTY_LINE = b'\r\n\r\n'
+from collections import namedtuple
+from decode_content.decode_content import decode_original_response_body, decode_http_req
+from utils import *
+
+Meta = namedtuple("Meta", ["payload_type", "request_id", "timestamp", "latency"])
 
 
-def log(msg):
-    """
-    Logging to STDERR as STDOUT and STDIN used for data transfer
-    @type msg: str or byte string
-    @param msg: Message to log to STDERR
-    """
-    try:
-        msg = str(msg) + '\n'
-    except:
-        pass
-    sys.stderr.write(msg)
-    sys.stderr.flush()
-
-
-def find_end_of_headers(byte_data):
-    """
-    Finds where the header portion ends and the content portion begins.
-    @type byte_data: str or byte string
-    @param byte_data: Hex decoded req or resp string
-    """
-    return byte_data.index(EMPTY_LINE) + 4
-
-
-def decode_http_content(content: bytes):
-    # split the content into lines
-    lines = content.split(b'\r\n')
-    # find the index of the empty line separating headers and body
-    empty_line_index = lines.index(b'')
-    # get the headers
-    headers = lines[:empty_line_index]
-    # get the body
-    body = b'\r\n'.join(lines[empty_line_index+1:])
-    # load the body as a JSON object
-    # log(f"===raw body: {body}")
-    json_body = json.loads(body)
-    # add the debug field to the JSON object
-    json_body['param']['debug'] = "true"
-    # convert the JSON object back to a string
-    new_body = json.dumps(json_body)
-    # log(f"===raw new body: {new_body}")
-    # update the Content-Length header with the new length of the body
-    new_headers = []
-    for header in headers:
-        if header.startswith(b'Content-Length:'):
-            new_headers.append(f'Content-Length: {len(new_body)}'.encode())
-        else:
-            new_headers.append(header)
-    # join the headers and body back together
-    new_content = b'\r\n'.join(new_headers + [b'', new_body.encode()])
-    return new_content
+# Req = {}
 
 
 def process_stdin():
@@ -81,13 +37,18 @@ def process_stdin():
         raw_headers = payload[:headers_pos]
         raw_content = payload[headers_pos:]
 
+        # get Meta
+        meta = Meta(*raw_metadata.split(b' '))
+
         log('===================================')
         request_type_id = int(raw_metadata.split(b' ')[0])
-        log('Request type: {}'.format({
-          1: 'Request',
-          2: 'Original Response',
-          3: 'Replayed Response'
-        }[request_type_id]))
+        log(
+            'Request type: {}'.format(
+                {1: 'Request', 2: 'Original Response', 3: 'Replayed Response'}[
+                    request_type_id
+                ]
+            )
+        )
         log('===================================')
 
         log('Original data:')
@@ -96,19 +57,28 @@ def process_stdin():
         log('Decoded request:')
         log(decoded)
 
-        new_body_decoded = decode_http_content(decoded)
-        # new_body_decoded = decode_http_content(raw_content)
-        log('Decoded new request:')
-        log(new_body_decoded )
+        # if meta.payload_type == PayLoadType.original_response.value:
+        #     log("=========original response=========")
+        #     new_body_decoded = decode_original_response_body(raw_content)
+        #     # Req[meta.request_id] = new_body_decoded
+        if meta.payload_type == PayLoadType.request.value:
+            log("=========replayed req=========")
+            # continue
+            new_body_decoded = decode_http_req(raw_content)
+            log('Decoded new request:')
+            log(new_body_decoded)
+            if not new_body_decoded:
+                continue
 
-        # encoded = binascii.hexlify(raw_metadata + b'\n' + raw_headers + raw_content).decode('ascii')
-        encoded = binascii.hexlify(new_body_decoded).decode('ascii')
+        encoded = binascii.hexlify(
+            raw_metadata + b'\n' + raw_headers + new_body_decoded
+        ).decode('ascii')
         log('Encoded data:')
         log(encoded)
 
         sys.stdout.write(encoded + '\n')
         return encoded + '\n'
 
+
 if __name__ == '__main__':
     process_stdin()
-
